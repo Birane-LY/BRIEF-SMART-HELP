@@ -1,0 +1,11 @@
+fastapi
+uvicorn[standard]
+python-multipart
+pydantic-settings
+python-dotenv
+faster-whisper
+transformers
+sentence-transformers
+faiss-cpu
+Pillow
+diskcache
