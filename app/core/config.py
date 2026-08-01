@@ -1,7 +1,7 @@
 """
 Central application configuration.
 
-All the configurable values like (models, limits, path) pass through here. 
+All configurable values (models, limits, paths) pass through here.
 Nothing should be hard-coded elsewhere in the project.
 """
 from functools import lru_cache
@@ -52,7 +52,7 @@ class Settings(BaseSettings):
 
     cors_origins: str = "http://localhost:8000,http://127.0.0.1:8000"
 
-    # Helpers pour convertir les chaînes séparées par des virgules en ensembles (sets)
+    # Helpers to convert comma-separated strings into sets
     @property
     def audio_extensions_set(self) -> set[str]:
         return {ext.strip().lower() for ext in self.allowed_audio_extensions.split(",")}
