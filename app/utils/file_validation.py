@@ -1,7 +1,7 @@
 from pathlib import Path
 from fastapi import File, UploadFile, HTTPException
 
-async def validate_file(file: UploadFile, allowed_entensions: set[str], max_size_mb:int | None = None) -> bytes:
+async def validate_file(file: UploadFile, allowed_extensions: set[str], max_size_mb:int | None = None) -> bytes:
   if not file.filename:
     raise HTTPException(
       status_code=422, detail={
@@ -11,7 +11,7 @@ async def validate_file(file: UploadFile, allowed_entensions: set[str], max_size
     )
   extension = Path(file.filename).suffix.lower()
 
-  if extension not in allowed_entensions:
+  if extension not in allowed_extensions:
     raise HTTPException(
       status_code=415, detail={
         "code": "UNSUPPORTED_FILE_TYPE",
