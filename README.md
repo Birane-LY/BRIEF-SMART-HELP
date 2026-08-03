@@ -163,8 +163,7 @@ pip install --no-cache-dir -r requirements.txt
 # Configuration
 cp .env.example .env
 
-# Dossiers
-mkdir -p data/cache data/tmp data/index
+
 ```
 
 ### Vérification
