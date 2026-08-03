@@ -17,12 +17,14 @@ class Settings(BaseSettings):
     api_prefix: str = "/api"
 
     hf_token: str = ""
+    groq_api_key: str = ""
 
     whisper_model_name: str = "small"
     whisper_device: str = "cpu"
     whisper_compute_type: str = "int8"
     text_model_name: str = "REPLACE_WITH_AFROXLMR_CHECKPOINT"
     vision_model_name: str = "openai/clip-vit-base-patch32"
+
     embedding_model_name: str = (
         "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2"
     )
@@ -37,8 +39,6 @@ class Settings(BaseSettings):
     allowed_image_extensions: str = ".jpg,.jpeg,.png"
 
     knowledge_base_path: Path = Path("data/knowledge_base/politique_support.yaml")
-    faiss_index_path: Path = Path("data/index/support.index")
-    faiss_metadata_path: Path = Path("data/index/metadata.json")
 
     rag_top_k: int = 3
     rag_similarity_threshold: float = 0.45
