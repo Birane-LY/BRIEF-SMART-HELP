@@ -1,0 +1,165 @@
+# ==========================================================================
+# BASE DE CONNAISSANCES INTERNE - POLITIQUE DE SUPPORT ET DE RETOUR (SMARTHELP)
+# ==========================================================================
+# [DOCUMENT OFFICIEL - USAGE INTERNE ET AUTOMATISATION RAG]
+
+name: "SmartHelp - Politique de support et de retour"
+version: "1.0.0"
+language: "fr"
+
+rules:
+  # -----------------------------------------------------------------------
+  # SECTION 1 : PRODUITS ENDOMMAGÉS OU CASSÉS À LA LIVRAISON
+  # -----------------------------------------------------------------------
+
+  - id: "R1.1"
+    title: "Produit cassé ou endommagé signalé dans les 48 heures"
+    category: "produit_endommage"
+    retrieval_queries:
+      - "produit cassé à la livraison"
+      - "produit fissuré endommagé photo"
+      - "remboursement produit abîmé"
+      - "casse livraison 48 heures"
+    conditions:
+      - "Le client signale un produit cassé, fissuré ou endommagé"
+      - "Une photo probante est fournie"
+      - "La réclamation est faite dans un délai de 48 heures après réception"
+    outcome:
+      status: "REMBOURSABLE"
+      action: "Remboursement intégral ou renvoi gratuit"
+      source: "Section 1 - Règle 1.1"
+
+  - id: "R1.2"
+    title: "Produit cassé signalé après 48 heures"
+    category: "produit_endommage"
+    retrieval_queries:
+      - "réclamation après 48 heures"
+      - "produit cassé délai dépassé"
+      - "dommage signalé en retard"
+    conditions:
+      - "Le client signale un produit cassé, fissuré ou endommagé"
+      - "La réclamation est faite après un délai de 48 heures"
+    outcome:
+      status: "A_VERIFIER"
+      action: "Validation manuelle du manager"
+      source: "Section 1 - Règle 1.2"
+
+  # -----------------------------------------------------------------------
+  # SECTION 2 : ERREURS DE LIVRAISON ET NON-CONFORMITÉ DE COMMANDE
+  # -----------------------------------------------------------------------
+
+  - id: "R2.1"
+    title: "Mauvais article reçu"
+    category: "non_conformite"
+    retrieval_queries:
+      - "mauvais article reçu"
+      - "erreur de commande couleur taille"
+      - "produit ne correspond pas"
+      - "article différent de la commande"
+    conditions:
+      - "Le produit reçu ne correspond pas en modèle, couleur ou taille"
+      - "La commande initiale est différente du produit livré"
+    outcome:
+      status: "ECHANGE_GRATUIT"
+      action: "Échange pris en charge, frais de retour offerts"
+      source: "Section 2 - Règle 2.1"
+
+  - id: "R2.2"
+    title: "Pièce ou accessoire manquant"
+    category: "commande_incomplete"
+    retrieval_queries:
+      - "pièce manquante"
+      - "accessoire absent du colis"
+      - "kit incomplet livraison"
+    conditions:
+      - "Un accessoire ou une pièce du kit est manquant à la réception"
+    outcome:
+      status: "EXPEDITION_PIECE"
+      action: "Expédition de la pièce manquante sous 3 jours ouvrés"
+      source: "Section 2 - Règle 2.2"
+
+  # -----------------------------------------------------------------------
+  # SECTION 3 : RETARDS DE LIVRAISON ET PROBLÈMES LOGISTIQUES
+  # -----------------------------------------------------------------------
+
+  - id: "R3.1"
+    title: "Retard de livraison mineur"
+    category: "retard_livraison"
+    retrieval_queries:
+      - "retard livraison 3 jours"
+      - "petit retard de livraison"
+      - "colis en retard quelques jours"
+    conditions:
+      - "Le retard est inférieur ou égal à 3 jours ouvrés"
+    outcome:
+      status: "NON_REMBOURSABLE_RETARD_MINEUR"
+      action: "Aucun dédommagement financier"
+      source: "Section 3 - Règle 3.1"
+
+  - id: "R3.2"
+    title: "Retard de livraison majeur"
+    category: "retard_livraison"
+    retrieval_queries:
+      - "retard supérieur à 5 jours"
+      - "gros retard de livraison"
+      - "commande très en retard"
+    conditions:
+      - "Le retard est supérieur à 5 jours ouvrés"
+    outcome:
+      status: "DEDOMMAGEMENT_10"
+      action: "Bon d'achat de 10% sur la prochaine commande"
+      source: "Section 3 - Règle 3.2"
+
+  - id: "R3.3"
+    title: "Colis bloqué ou perdu"
+    category: "colis_perdu"
+    retrieval_queries:
+      - "colis perdu transporteur"
+      - "colis bloqué depuis 7 jours"
+      - "commande jamais reçue"
+      - "statut bloqué ou perdu"
+    conditions:
+      - "Le statut transporteur indique Bloqué ou Perdu"
+      - "Le blocage dure depuis plus de 7 jours"
+      - "Enquête transporteur réalisée"
+    outcome:
+      status: "REMBOURSABLE_COLIS_PERDU"
+      action: "Remboursement total après enquête transporteur"
+      source: "Section 3 - Règle 3.3"
+
+  # -----------------------------------------------------------------------
+  # SECTION 4 : RÈGLES GÉNÉRALES DE REFUS
+  # -----------------------------------------------------------------------
+
+  - id: "R4.1"
+    title: "Usure normale ou mauvaise utilisation"
+    category: "exclusion"
+    retrieval_queries:
+      - "produit tombé après réception"
+      - "mauvaise utilisation du produit"
+      - "usure normale garantie"
+      - "chute après livraison"
+    conditions:
+      - "Le défaut est dû à une mauvaise manipulation du client"
+      - "OU le défaut est dû à une chute après réception"
+      - "OU le défaut est dû à une usure normale"
+    outcome:
+      status: "REFUSE"
+      action: "Réclamation rejetée, hors garantie"
+      source: "Section 4 - Règle 4.1"
+
+  - id: "R4.2"
+    title: "Absence de preuve"
+    category: "justificatifs_manquants"
+    retrieval_queries:
+      - "pas de photo ni description"
+      - "réclamation sans preuve"
+      - "aucune pièce justificative"
+    conditions:
+      - "Réclamation pour produit endommagé ou non conforme"
+      - "Aucune photo probante fournie"
+      - "Aucune description claire par message vocal ou écrit"
+    outcome:
+      status: "EN_ATTENTE_JUSTIFICATIFS"
+      action: "Mise en attente, demander pièces complémentaires"
+      source: "Section 4 - Règle 4.2"
