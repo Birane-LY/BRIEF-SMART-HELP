@@ -17,7 +17,6 @@ SwaggerFile = Annotated[
     UploadFile, WithJsonSchema({"type": "string", "format": "binary"})
 ]
 
-
 @router.post("/support-ticket", response_model=TicketResponse)
 async def create_support_ticket(
     description: Annotated[str | None, Form()] = None,

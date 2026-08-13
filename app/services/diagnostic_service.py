@@ -7,14 +7,13 @@ from app.core.config import settings
 class DiagnosticService:
 
     def __init__(self):
-        # Initialize the Groq cloud client
         api_key = getattr(settings, "groq_api_key", None)
         self.client = Groq(api_key=api_key)
 
     def evaluate(self, full_text: str | None, vision_results: list, rag_result: any) -> dict:
-        # 1. Safely extract the first element from the vision results list
+        image_fournie = bool(vision_results and len(vision_results) > 0)
         vision_context = {"label": "Aucune image", "is_relevant": False, "score": 0.0}
-        if vision_results and len(vision_results) > 0:
+        if image_fournie:
             top = vision_results[0]
             vision_context = {
                 "label": top.get("label", ""),
@@ -22,25 +21,58 @@ class DiagnosticService:
                 "score": top.get("score", 0.0)
             }
 
-        # 2. Format the RAG rule context
         rag_context = "Aucune règle spécifique trouvée dans la base de connaissances."
         if rag_result:
             rag_context = json.dumps(rag_result if isinstance(rag_result, dict) else rag_result.model_dump(), ensure_ascii=False)
 
-        # 3. Ultimate System Prompt: Focus on the semantic relevance of the client description
-        system_instruction = """Tu es l'expert en conformité et anti-fraude de SmartHelp. Ton rôle est d'analyser la réclamation d'un client et de juger sa pertinence par rapport au contexte e-commerce (produits physiques endommagés, non conformes ou non livrés).
+        system_instruction = """Tu es l'expert en conformité et anti-fraude de SmartHelp. Tu dois suivre un ALGORITHME STRICT EN 2 ÉTAPES SÉQUENTIELLES, dans cet ordre exact, sans jamais les mélanger.
 
-        RÈGLES DE JUGEMENT STRICTES :
-        1. ANALYSE EN PREMIER LA PERTINENCE DU TEXTE/AUDIO CLIENT :
-           - Si la description du client est hors-sujet, poétique, vide, ou s'il s'agit d'un bruit/musique de fond (ex: "les cocos chantent...", "Sous-titres réalisés par..."), la réclamation est DIRECTEMENT INVALIDÉE.
-           - TOUT HORS-SUJET DANS LE TEXTE OU L'AUDIO ENTRAÎNE UN STATUT "REFUSE" IMMÉDIAT, même si l'image fournie semble pertinente. Une description incohérente annule la validité du dossier.
+        ══════════════════════════════════════════
+        ÉTAPE 1 — VALIDITÉ DU TEXTE (à faire EN PREMIER, TOUJOURS, INDÉPENDAMMENT de toute information sur l'image)
+        ══════════════════════════════════════════
+        Avant même de regarder si une image a été fournie ou non, réponds à cette seule question :
+        "Ce texte décrit-il une réclamation e-commerce compréhensible (un problème avec un produit commandé, livré, endommagé, non conforme ou non reçu) ?"
 
-        2. APPLICATION DE LA CHARTE DE DÉCISION (Si le texte est valide) :
-           - "REMBOURSABLE" : Le texte est pertinent, la règle du RAG (R1.1/R1.2) correspond, ET l'image confirme le dommage (label: "damaged product", is_relevant: True).
-           - "EN_ATTENTE_JUSTIFICATIFS" : Le texte décrit un vrai problème e-commerce légitime, mais l'image associée est hors-sujet ou invalide (is_relevant: False).
-           - "A_VERIFIER" : Le texte décrit un problème, mais l'image montre un produit intact (label: "wrong item" sans dommage), créant une contradiction.
+        Signaux d'un texte INVALIDE (liste non exhaustive) :
+        - Paroles de chanson, poésie, comptine, discours récité, formule de politesse répétée sans contenu.
+        - Bruit ambiant capté par erreur, silence, transcription incompréhensible ou sans structure de phrase logique.
+        - Texte qui ne mentionne AUCUN élément e-commerce (aucun produit, aucune commande, aucune livraison, aucun dommage).
+        - Sujet manifestement hors du cadre du support client (politique, actualité, anecdote personnelle sans lien).
 
-        CONSIGNE DE RÉDACTION : Ne fais JAMAIS référence aux exemples de cette consigne dans ta justification. Reste purement factuel sur ce que le client a envoyé.
+        → SI LE TEXTE EST INVALIDE selon ces critères : statut = "REFUSE", score_fiabilite entre 0.0 et 0.15.
+        CETTE DÉCISION EST DÉFINITIVE ET IMMÉDIATE. Ne passe PAS à l'étape 2. Le fait qu'aucune image n'ait été
+        fournie, ou qu'une image pertinente ait été fournie, n'a AUCUNE influence sur cette étape 1 : un texte
+        invalide entraîne TOUJOURS "REFUSE", peu importe l'image.
+
+        → SI LE TEXTE EST VALIDE (même bref, même sans détail technique, du moment qu'il décrit un vrai problème
+        e-commerce compréhensible) : passe à l'étape 2 ci-dessous.
+
+        ══════════════════════════════════════════
+        ÉTAPE 2 — UNIQUEMENT SI LE TEXTE A ÉTÉ JUGÉ VALIDE À L'ÉTAPE 1
+        ══════════════════════════════════════════
+        Regarde maintenant la variable "images_fournies" et le contexte vision :
+
+        a) images_fournies = false (aucune image envoyée) :
+           → statut = "EN_ATTENTE_JUSTIFICATIFS". Ce n'est pas suspect : le client n'a pas encore transmis de photo.
+
+        b) images_fournies = true, mais l'image est hors-sujet (reçu, capture d'écran, mauvais article, emballage
+           sans rapport avec le texte) :
+           → statut = "EN_ATTENTE_JUSTIFICATIFS".
+
+        c) images_fournies = true, et l'image confirme le dommage décrit dans le texte (label lié à un défaut,
+           is_relevant: true) :
+           - une règle RAG correspond → statut = "REMBOURSABLE"
+           - aucune règle RAG ne correspond → statut = "A_VERIFIER"
+
+        d) images_fournies = true, et l'image montre un produit "neuf ou en bon état" (aucun dommage visible),
+           EN CONTRADICTION avec un texte qui affirme un dommage :
+           → statut = "A_VERIFIER". La contradiction entre le texte et l'image doit être signalée explicitement
+           dans la justification.
+
+        CONSIGNE DE RÉDACTION : Ne fais jamais référence aux exemples de cette consigne dans ta justification.
+        Reste factuel. Ta justification doit toujours être cohérente avec le statut choisi et avec l'étape qui
+        l'a produit (mentionne si le rejet vient d'un problème de texte, ou si l'attente vient d'un problème
+        d'image).
 
         Tu dois répondre STRICTEMENT sous cette forme JSON, sans aucun texte autour :
         {
@@ -49,7 +81,6 @@ class DiagnosticService:
             "justification": "Une seule phrase claire et polie en français expliquant pourquoi la demande est acceptée, mise en attente ou rejetée."
         }"""
 
-        # 4. User Prompt: Raw structured facts combined with the mandatory 'json' keyword constraint
         user_prompt = f"""
         Format your response strictly using a json object according to the system instructions.
         
@@ -62,13 +93,13 @@ class DiagnosticService:
         {rag_context}
 
         3. ANALYSE DE L'IMAGE COMPLÉMENTAIRE :
+        - images_fournies : {image_fournie}
         - Label de l'image : "{vision_context['label']}"
         - L'image montre-t-elle un produit e-commerce valide ? : {vision_context['is_relevant']}
         - Score de confiance de la vision : {vision_context['score']}
         """
 
         try:
-            # Trigger Groq Cloud API inference
             response = self.client.chat.completions.create(
                 model="llama-3.1-8b-instant",
                 response_format={"type": "json_object"},
@@ -76,10 +107,9 @@ class DiagnosticService:
                     {"role": "system", "content": system_instruction},
                     {"role": "user", "content": user_prompt}
                 ],
-                temperature=0.1
+                temperature=0.0
             )
 
-            # Robust response parsing matching Groq structural outputs
             if hasattr(response, 'choices') and len(response.choices) > 0:
                 choice = response.choices[0]
                 content_text = choice.message.content if hasattr(choice, 'message') else choice['message']['content']
@@ -95,7 +125,6 @@ class DiagnosticService:
             }
 
         except Exception as e:
-            # Secure automated fallback to human review in case of upstream structural API failure
             return {
                 "statut_propose": "A_VERIFIER",
                 "score_fiabilite": 0.500,

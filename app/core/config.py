@@ -50,7 +50,9 @@ class Settings(BaseSettings):
     cache_ttl_seconds: int = 86400
     temp_dir: Path = Path("data/tmp")
 
-    cors_origins: str = "http://localhost:8000,http://127.0.0.1:8000"
+    cors_origins: str = "http://localhost:8000,http://127.0.0.1:8000,'http://localhost:3000','http://localhost:5173'"
+   
+
 
     # Helpers to convert comma-separated strings into sets
     @property
