@@ -1,16 +1,35 @@
 import json
 import re
-from groq import Groq
+from typing import Any
+
 from app.core.config import settings
+
+try:
+    from groq import Groq
+except ImportError: 
+    Groq = None  
 
 
 class DiagnosticService:
 
     def __init__(self):
-        api_key = getattr(settings, "groq_api_key", None)
-        self.client = Groq(api_key=api_key)
+        api_key = (getattr(settings, "groq_api_key", "") or "").strip()
+        self.client = Groq(api_key=api_key) if Groq is not None and api_key else None
 
-    def evaluate(self, full_text: str | None, vision_results: list, rag_result: any) -> dict:
+    @staticmethod
+    def _fallback(reason: str) -> dict:
+        return {
+            "statut_propose": "A_VERIFIER",
+            "score_fiabilite": 0.500,
+            "warnings": [reason],
+        }
+
+    def evaluate(self, full_text: str | None, vision_results: list, rag_result: Any) -> dict:
+        if self.client is None:
+            return self._fallback(
+                "Diagnostic automatique indisponible : configurez GROQ_API_KEY pour activer l’analyse Groq."
+            )
+
         image_fournie = bool(vision_results and len(vision_results) > 0)
         vision_context = {"label": "Aucune image", "is_relevant": False, "score": 0.0}
         if image_fournie:
@@ -39,16 +58,21 @@ class DiagnosticService:
         - Texte qui ne mentionne AUCUN élément e-commerce (aucun produit, aucune commande, aucune livraison, aucun dommage).
         - Sujet manifestement hors du cadre du support client (politique, actualité, anecdote personnelle sans lien).
 
-        → SI LE TEXTE EST INVALIDE selon ces critères : statut = "REFUSE", score_fiabilite entre 0.0 et 0.15.
-        CETTE DÉCISION EST DÉFINITIVE ET IMMÉDIATE. Ne passe PAS à l'étape 2. Le fait qu'aucune image n'ait été
-        fournie, ou qu'une image pertinente ait été fournie, n'a AUCUNE influence sur cette étape 1 : un texte
-        invalide entraîne TOUJOURS "REFUSE", peu importe l'image.
+        → SI LE TEXTE EST INVALIDE, regarde uniquement si une image pertinente confirme un dommage :
+           - image fournie, produit e-commerce pertinent et dommage visible (is_relevant: true) :
+             statut = "EN_ATTENTE_JUSTIFICATIFS", score_fiabilite entre 0.30 et 0.60 ; la photo constitue
+             un indice, mais le client doit fournir une description exploitable de la commande et du problème.
+           - aucune image pertinente confirmant un dommage : statut = "REFUSE", score_fiabilite entre 0.0 et 0.15.
+        Un texte quelconque ne doit donc jamais provoquer un refus lorsque la photo est pertinente et montre
+        clairement un dommage.
 
         → SI LE TEXTE EST VALIDE (même bref, même sans détail technique, du moment qu'il décrit un vrai problème
         e-commerce compréhensible) : passe à l'étape 2 ci-dessous.
 
         ══════════════════════════════════════════
         ÉTAPE 2 — UNIQUEMENT SI LE TEXTE A ÉTÉ JUGÉ VALIDE À L'ÉTAPE 1
+        (Pour un texte invalide avec image de dommage, appliquer directement le statut EN_ATTENTE_JUSTIFICATIFS
+        défini à l’étape 1 et ne pas appliquer les règles de remboursement.)
         ══════════════════════════════════════════
         Regarde maintenant la variable "images_fournies" et le contexte vision :
 
@@ -87,6 +111,9 @@ class DiagnosticService:
         DONNÉES À ANALYSER :
         
         1. DESCRIPTION TEXTUELLE OU AUDIO DU CLIENT :
+        IMPORTANT : un texte libre, incohérent ou sans rapport avec l’e-commerce est considéré comme invalide ;
+        toutefois, si l’image fournie est pertinente et montre un dommage, le statut obligatoire est
+        EN_ATTENTE_JUSTIFICATIFS, jamais REFUSE.
         "{full_text if full_text else 'Aucune description fournie.'}"
 
         2. RÈGLE TROUVÉE PAR LE RAG :
@@ -101,7 +128,7 @@ class DiagnosticService:
 
         try:
             response = self.client.chat.completions.create(
-                model="llama-3.1-8b-instant",
+                model="openai/gpt-oss-20b",
                 response_format={"type": "json_object"},
                 messages=[
                     {"role": "system", "content": system_instruction},

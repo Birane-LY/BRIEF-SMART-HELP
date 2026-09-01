@@ -3,6 +3,8 @@ uvicorn[standard]
 python-multipart
 pydantic-settings
 python-dotenv
+PyYAML
+groq
 faster-whisper
 transformers
 sentence-transformers

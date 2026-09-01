@@ -12,22 +12,23 @@ rules:
   # SECTION 1 : PRODUITS ENDOMMAGÉS OU CASSÉS À LA LIVRAISON
   # -----------------------------------------------------------------------
 
-  - id: "R1.1"
-    title: "Produit cassé ou endommagé signalé dans les 48 heures"
-    category: "produit_endommage"
+  - id: R1.1
+    title: Produit cassé dans les 48h
     retrieval_queries:
-      - "produit cassé à la livraison"
-      - "produit fissuré endommagé photo"
-      - "remboursement produit abîmé"
-      - "casse livraison 48 heures"
+      - produit cassé à la livraison
+      - ordinateur cassé reçu à la livraison
+      - ordinateur portable endommagé dès la réception
+      - colis reçu avec un ordinateur cassé
+      - produit arrivé cassé
+      - appareil électronique endommagé à la réception
+      - écran d’ordinateur cassé lors de la livraison
     conditions:
-      - "Le client signale un produit cassé, fissuré ou endommagé"
-      - "Une photo probante est fournie"
-      - "La réclamation est faite dans un délai de 48 heures après réception"
+      - Le dommage est signalé dans les 48 heures suivant la livraison
+      - Le produit était endommagé à la réception
     outcome:
-      status: "REMBOURSABLE"
-      action: "Remboursement intégral ou renvoi gratuit"
-      source: "Section 1 - Règle 1.1"
+      status: REMBOURSABLE
+      action: Remboursement ou remplacement selon le choix du client
+      source: Section 1 - Règle 1.1
 
   - id: "R1.2"
     title: "Produit cassé signalé après 48 heures"

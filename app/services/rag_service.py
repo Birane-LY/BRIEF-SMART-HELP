@@ -1,132 +1,105 @@
-import os
-import re
-import yaml
+"""Recherche sémantique dans la base de connaissances support."""
+
+from __future__ import annotations
+
 import logging
-import unicodedata
+from pathlib import Path
+from typing import Any
+
+import yaml
+
+from app.core.config import settings
 from app.schemas.ticket_response import RAGResult
 
 logger = logging.getLogger(__name__)
 
-# Only greetings and pure grammar are excluded.
-# ALL BUSINESS-SPECIFIC WORDS (bad, received, parcel, condition, payment, etc.) HAVE BEEN REMOVED.
-STOPWORDS = {
-    "bonjour", "cordialement", "merci", "svp", "plait", "vous", "nous",
-    "avez", "avoir", "cette", "cela", "donc", "alors", "bien", "tout",
-    "toute", "fois", "jour", "date", "veux", "voudrais", "besoin", "aide",
-    "aimerais", "suite", "cause", "raison", "depuis", "quand", "comment",
-    "pourquoi", "encore", "aussi", "meme", "chose", "faire", "peux", "peut",
-    "pouvez", "etre", "dans", "pour", "avec", "sans", "sur", "sous"
-}
-
 
 class RAGService:
+    """Indexe les règles YAML et les recherche par similarité cosinus."""
 
-    def __init__(self, relative_yaml_path: str = "/home/birane/BRIEF-SMART-HELP/ data/knowledge_base/politique_support.yaml"):
-        """
-        Initializes the RAG service by resolving the YAML file path
-        relative to the root of the Python project.
-        """
-        # Project root (goes up 3 levels above the current file)
-        base_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
-        self.yaml_path = os.path.join(base_dir, relative_yaml_path)
-        self.rules = []
+    def __init__(self, relative_yaml_path: str | Path | None = None) -> None:
+        project_root = Path(__file__).resolve().parents[2]
+        configured_path = relative_yaml_path or settings.knowledge_base_path
+        path = Path(configured_path)
+        self.yaml_path = path if path.is_absolute() else project_root / path
+        self.rules: list[dict[str, Any]] = []
+        self._documents: list[str] = []
+        self._model: Any = None
+        self._index: Any = None
         self._load_knowledge_base()
 
-    def _load_knowledge_base(self):
-        """Loads the knowledge base from the YAML file."""
-        if os.path.exists(self.yaml_path):
-            try:
-                with open(self.yaml_path, "r", encoding="utf-8") as f:
-                    data = yaml.safe_load(f) or {}
-                    self.rules = data.get("rules", [])
-                logger.info(f"[RAG INFO] Base de connaissances chargée : {len(self.rules)} règles trouvées.")
-            except Exception as e:
-                logger.error(f"[RAG ERREUR] Erreur de lecture du fichier YAML : {str(e)}")
-        else:
-            logger.warning(f"[RAG ATTENTION] Fichier YAML introuvable : {self.yaml_path}")
+    def _load_knowledge_base(self) -> None:
+        if not self.yaml_path.is_file():
+            logger.warning("[RAG] Base de connaissances introuvable : %s", self.yaml_path)
+            return
+        try:
+            with self.yaml_path.open("r", encoding="utf-8") as file:
+                data = yaml.safe_load(file) or {}
+            self.rules = data.get("rules", [])
+            self._documents = [self._rule_to_document(rule) for rule in self.rules]
+            logger.info("[RAG] Base chargée : %d règles depuis %s", len(self.rules), self.yaml_path)
+        except (OSError, yaml.YAMLError) as exc:
+            logger.error("[RAG] Impossible de lire %s : %s", self.yaml_path, exc)
 
-    def _normalize(self, text: str) -> str:
-        """Converts text to lowercase and removes accents."""
-        if not text:
-            return ""
-        return "".join(
-            c for c in unicodedata.normalize("NFD", text.lower())
-            if unicodedata.category(c) != "Mn"
-        )
+    @staticmethod
+    def _rule_to_document(rule: dict[str, Any]) -> str:
+        queries = " ".join(rule.get("retrieval_queries", []))
+        conditions = " ".join(rule.get("conditions", []))
+        return f"{rule.get('title', '')}. {queries}. {conditions}".strip()
 
-    def _extract_tokens(self, text: str, min_len: int = 3) -> set[str]:
-        """
-        Extracts unique full words by cleaning punctuation
-        and removing stopwords.
-        """
-        normalized_text = self._normalize(text)
-        # Strict extraction of alphanumeric words
-        words = re.findall(r'\b\w+\b', normalized_text)
-        return {w for w in words if len(w) >= min_len and w not in STOPWORDS}
+    def _ensure_index(self) -> bool:
+        if self._index is not None:
+            return True
+        if not self._documents:
+            return False
+        try:
+            import faiss
+            from sentence_transformers import SentenceTransformer
+
+            self._model = SentenceTransformer(settings.embedding_model_name)
+            embeddings = self._model.encode(
+                self._documents,
+                convert_to_numpy=True,
+                normalize_embeddings=True,
+                show_progress_bar=False,
+            )
+            self._index = faiss.IndexFlatIP(embeddings.shape[1])
+            self._index.add(embeddings)
+            logger.info("[RAG] Index FAISS construit : %d documents", len(self._documents))
+            return True
+        except (ImportError, OSError, RuntimeError, ValueError) as exc:
+            logger.error("[RAG] Dépendances ou modèle d'embeddings indisponibles : %s", exc)
+            return False
 
     def search(self, text: str) -> RAGResult | None:
-        """
-        Scans the submitted text against the YAML rules.
-        """
-        if not text or not self.rules:
+        """Retourne la règle la plus proche si elle dépasse le seuil configuré."""
+        if not text or not self._ensure_index():
             return None
 
-        claim_normalized = self._normalize(text)
-        claim_tokens = self._extract_tokens(text, min_len=3)
-
-        scored_rules = []
-
-        for rule in self.rules:
-            matches = 0
-
-            # 1. Explicit standard phrases (strong signal)
-            for query in rule.get("retrieval_queries", []):
-                normalized_query = self._normalize(query)
-                if normalized_query and normalized_query in claim_normalized:
-                    matches += 3
-
-            # 2. Significant words from the title (full words)
-            title_tokens = self._extract_tokens(rule.get("title", ""), min_len=3)
-            matching_title_words = title_tokens.intersection(claim_tokens)
-            matches += len(matching_title_words) * 2  # Increased weight for the title
-
-            # 3. Significant words from the conditions (full words)
-            for condition in rule.get("conditions", []):
-                condition_tokens = self._extract_tokens(condition, min_len=3)
-                matching_condition_words = condition_tokens.intersection(claim_tokens)
-                matches += len(matching_condition_words)
-
-            if matches > 0:
-                scored_rules.append((matches, rule))
-
-        if not scored_rules:
-            return None
-
-        # Sort by descending score
-        scored_rules.sort(key=lambda item: item[0], reverse=True)
-        best_matches, best_rule = scored_rules[0]
-        second_best = scored_rules[1][0] if len(scored_rules) > 1 else 0
-
-        logger.info(
-            f"[RAG INFO] Règle retenue : {best_rule.get('id')} ({best_matches} pts) | "
-            f"Deuxième : {second_best} pts"
+        query_embedding = self._model.encode(
+            [text],
+            convert_to_numpy=True,
+            normalize_embeddings=True,
+            show_progress_bar=False,
         )
-
-        # Minimum threshold and confidence margin
-        if best_matches < 2 or (best_matches - second_best) < 1:
+        scores, indices = self._index.search(query_embedding, max(1, settings.rag_top_k))
+        best_score = float(scores[0][0])
+        best_index = int(indices[0][0])
+        if best_index < 0 or best_score < settings.rag_similarity_threshold:
+            logger.info("[RAG] Aucun résultat au-dessus du seuil : %.3f", best_score)
             return None
 
-        confidence_score = min(0.60 + (best_matches * 0.05), 0.98)
-        outcome = best_rule.get("outcome", {})
-
+        rule = self.rules[best_index]
+        outcome = rule.get("outcome", {})
+        logger.info("[RAG] Règle retenue : %s (similarité %.3f)", rule.get("id"), best_score)
         return RAGResult(
-            id=best_rule.get("id"),
-            title=best_rule.get("title"),
-            status=outcome.get("status"),
-            action=outcome.get("action"),
-            source=outcome.get("source"),
-            conditions=best_rule.get("conditions", []),
-            score=round(confidence_score, 2)
+            id=rule.get("id", ""),
+            title=rule.get("title", ""),
+            status=outcome.get("status", "A_VERIFIER"),
+            action=outcome.get("action", ""),
+            source=outcome.get("source", ""),
+            conditions=rule.get("conditions", []),
+            score=round(best_score, 3),
         )
 
 
