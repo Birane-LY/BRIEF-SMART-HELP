@@ -10,7 +10,7 @@ app = FastAPI(title=settings.app_name)
 origins = [
     "http://localhost:3000",
     "http://localhost:5173",
-    "https://brief-smart-help-front-end-nujt.vercel.app/",
+    "https://brief-smart-help-front-end.vercel.app/",
 ]
 
 app.add_middleware(
