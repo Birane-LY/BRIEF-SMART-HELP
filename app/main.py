@@ -1,23 +1,28 @@
+
 from fastapi import FastAPI
-from app.core.config import settings
-from app.api.routes.support_ticket import router as support_router
 from fastapi.middleware.cors import CORSMiddleware
 
-app = FastAPI(title=settings.app_name)
+from app.core.config import settings
+from app.api.routes.support_ticket import router as support_router
 
+
+app = FastAPI(
+    title=settings.app_name,
+    debug=settings.debug,
+)
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"], # Permet à n'importe quel site de requêter votre API (Idéal pour le développement)
+    allow_origins=settings.cors_origins_list,
     allow_credentials=True,
-    allow_methods=["*"], # Autorise POST, GET, OPTIONS, etc.
-    allow_headers=["*"], # Autorise tous les en-têtes
+    allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+    allow_headers=["Authorization", "Content-Type"],
 )
 
 app.include_router(
-    support_router, 
-    prefix=settings.api_prefix, 
-    tags=["Support"]
+    support_router,
+    prefix=settings.api_prefix,
+    tags=["Support"],
 )
 
 
