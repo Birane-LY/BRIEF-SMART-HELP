@@ -1,44 +1,45 @@
-"""
-Central application configuration.
 
-All configurable values (models, limits, paths) pass through here.
-Nothing should be hard-coded elsewhere in the project.
-"""
 from functools import lru_cache
 from pathlib import Path
+
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 class Settings(BaseSettings):
     app_name: str = "Smart Help API"
-    app_env: str = "development"
-    debug: bool = True
+    app_env: str = "production"
+    debug: bool = False
     log_level: str = "INFO"
     api_prefix: str = "/api"
 
     hf_token: str = ""
     groq_api_key: str = ""
 
-    whisper_model_name: str = "small"
+    # Transcription
+    whisper_model_name: str = "tiny"
     whisper_device: str = "cpu"
     whisper_compute_type: str = "int8"
+
+    # Modèles IA
     text_model_name: str = "REPLACE_WITH_AFROXLMR_CHECKPOINT"
     vision_model_name: str = "openai/clip-vit-base-patch32"
-
     embedding_model_name: str = (
         "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2"
     )
 
+    # Limites des fichiers
     max_text_length: int = 2000
     max_audio_size_mb: int = 10
     max_image_size_mb: int = 5
     max_images: int = 3
     max_audio_duration_seconds: int = 300
 
-    allowed_audio_extensions: str = ".mp3,.wav"
+    allowed_audio_extensions: str = ".mp3,.wav,.webm"
     allowed_image_extensions: str = ".jpg,.jpeg,.png"
 
-    knowledge_base_path: Path = Path("data/knowledge_base/politique_support.yaml")
+    knowledge_base_path: Path = Path(
+        "data/knowledge_base/politique_support.yaml"
+    )
 
     rag_top_k: int = 3
     rag_similarity_threshold: float = 0.45
@@ -50,18 +51,34 @@ class Settings(BaseSettings):
     cache_ttl_seconds: int = 86400
     temp_dir: Path = Path("data/tmp")
 
-    cors_origins: str = "http://localhost:8000,http://127.0.0.1:8000,'http://localhost:3000','http://localhost:5173'"
-   
+    cors_origins: str = (
+        "http://localhost:8000,"
+        "http://127.0.0.1:8000,"
+        "http://localhost:3000,"
+        "http://localhost:5173"
+    )
 
-
-    # Helpers to convert comma-separated strings into sets
     @property
     def audio_extensions_set(self) -> set[str]:
-        return {ext.strip().lower() for ext in self.allowed_audio_extensions.split(",")}
+        return {
+            ext.strip().lower()
+            for ext in self.allowed_audio_extensions.split(",")
+        }
 
     @property
     def image_extensions_set(self) -> set[str]:
-        return {ext.strip().lower() for ext in self.allowed_image_extensions.split(",")}
+        return {
+            ext.strip().lower()
+            for ext in self.allowed_image_extensions.split(",")
+        }
+
+    @property
+    def cors_origins_list(self) -> list[str]:
+        return [
+            origin.strip()
+            for origin in self.cors_origins.split(",")
+            if origin.strip()
+        ]
 
     model_config = SettingsConfigDict(
         env_file=".env",
