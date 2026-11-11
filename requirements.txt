@@ -1,28 +1,24 @@
 
-# Framework API
+# API
 fastapi
-uvicorn[standard]
+uvicorn
 python-multipart
 
-# Configuration et validation
+# Configuration
 pydantic
 pydantic-settings
 python-dotenv
 PyYAML
 
-# Intelligence artificielle - transcription audio
+# IA externe
+groq
+
+# Transcription audio locale
 faster-whisper
 
-# Intelligence artificielle - analyse d'images
+# Analyse d'images
 transformers
 Pillow
-
-# Recherche documentaire (RAG)
-sentence-transformers
-faiss-cpu
-
-# API d'intelligence artificielle externe
-groq
 
 # Cache
 diskcache
